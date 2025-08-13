@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>coca li</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: url("li.png") no-repeat center center fixed;
+            background-size: cover;
+        }
+        canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        /* 背景字幕雨层 */
+        #matrixCanvas {
+            z-index: 0; /* 最底层 */
+            pointer-events: none;
+        }
+        /* 爱心粒子层 */
+        #pinkboard {
+            z-index: 1;
+        }
+        /* 紫萱文字层 */
+        #child {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2; /* 最上层 */
+        }
+        h4 {
+            font-family: "STKaiti";
+            font-size: 40px;
+            color: #f584b7;
+            text-align: center;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 背景字幕雨 -->
+    <canvas id="matrixCanvas"></canvas>
+    <!-- 爱心粒子 -->
+    <canvas id="pinkboard"></canvas>
+    <!-- 紫萱文字 -->
+    <div id="child">
+        <h4>紫萱</h4>
+    </div>
+
+    <!-- 背景音乐 -->
+    <audio id="bgm" src="li.mp3" loop></audio>
+
+    <script>
+        // 点击页面控制音乐播放/暂停
+        const audio = document.getElementById('bgm');
+        let isPlaying = false;
+        document.body.addEventListener('click', () => {
+            if (isPlaying) audio.pause();
+            else audio.play();
+            isPlaying = !isPlaying;
+        });
+
+        /********** 背景透明字幕雨 **********/
+        (function(){
+            const canvas = document.getElementById('matrixCanvas');
+            const ctx = canvas.getContext('2d');
+
+            function resize(){
+                canvas.height = window.innerHeight;
+                canvas.width = window.innerWidth;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            const texts = 'COLA LI'.split('');
+            const fontSize = 20; // 字体稍大，更明显
+            const columns = Math.floor(canvas.width / fontSize);
+            const drops = Array(columns).fill(1);
+
+            function draw(){
+                // 这里不清空整个画布，只让已有文字轻微淡出
+                ctx.fillStyle = 'rgba(0,0,0,0)'; // 不覆盖背景
+                ctx.fillRect(0,0,canvas.width,canvas.height);
+
+                ctx.fillStyle = '#f584b7'; // 粉色
+                ctx.font = fontSize + 'px arial';
+
+                for(let i=0;i<drops.length;i++){
+                    const text = texts[Math.floor(Math.random()*texts.length)];
+                    ctx.globalAlpha = 0.4; // 透明度稍高，更明显
+                    ctx.fillText(text,i*fontSize,drops[i]*fontSize);
+
+                    if(drops[i]*fontSize > canvas.height || Math.random() > 0.975){
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 100);
+        })();
+
+        /********** 爱心粒子 **********/
+        var settings = {
+            particles: { length: 500, duration: 2, velocity: 100, effect: -0.75, size: 30 }
+        };
+
+        var Point = function (x, y) { this.x = x || 0; this.y = y || 0; };
+        Point.prototype.clone = function () { return new Point(this.x, this.y); };
+        Point.prototype.length = function (len) {
+            if (len === undefined) return Math.sqrt(this.x * this.x + this.y * this.y);
+            this.normalize(); this.x *= len; this.y *= len; return this;
+        };
+        Point.prototype.normalize = function () {
+            var len = this.length(); this.x /= len; this.y /= len; return this;
+        };
+
+        var Particle = function () {
+            this.position = new Point(); this.velocity = new Point(); this.acceleration = new Point(); this.age = 0;
+        };
+        Particle.prototype.initialize = function (x, y, dx, dy) {
+            this.position.x = x; this.position.y = y;
+            this.velocity.x = dx; this.velocity.y = dy;
+            this.acceleration.x = dx * settings.particles.effect;
+            this.acceleration.y = dy * settings.particles.effect;
+            this.age = 0;
+        };
+        Particle.prototype.update = function (delta) {
+            this.position.x += this.velocity.x * delta;
+            this.position.y += this.velocity.y * delta;
+            this.velocity.x += this.acceleration.x * delta;
+            this.velocity.y += this.acceleration.y * delta;
+            this.age += delta;
+        };
+        Particle.prototype.draw = function (ctx, image) {
+            function ease(t) { return (--t) * t * t + 1; }
+            var size = image.width * ease(this.age / settings.particles.duration);
+            ctx.globalAlpha = 1 - this.age / settings.particles.duration;
+            ctx.drawImage(image, this.position.x - size / 2, this.position.y - size / 2, size, size);
+        };
+
+        var ParticlePool = function (length) {
+            var particles = new Array(length);
+            for (var i = 0; i < particles.length; i++) particles[i] = new Particle();
+            var firstActive = 0, firstFree = 0, duration = settings.particles.duration;
+
+            this.add = function (x, y, dx, dy) {
+                particles[firstFree].initialize(x, y, dx, dy);
+                firstFree = (firstFree + 1) % particles.length;
+                if (firstActive === firstFree) firstActive = (firstActive + 1) % particles.length;
+            };
+            this.update = function (delta) {
+                if (firstActive < firstFree) {
+                    for (let i = firstActive; i < firstFree; i++) particles[i].update(delta);
+                } else {
+                    for (let i = firstActive; i < particles.length; i++) particles[i].update(delta);
+                    for (let i = 0; i < firstFree; i++) particles[i].update(delta);
+                }
+                while (particles[firstActive].age >= duration && firstActive !== firstFree) {
+                    firstActive = (firstActive + 1) % particles.length;
+                }
+            };
+            this.draw = function (ctx, image) {
+                if (firstActive < firstFree) {
+                    for (let i = firstActive; i < firstFree; i++) particles[i].draw(ctx, image);
+                } else {
+                    for (let i = firstActive; i < particles.length; i++) particles[i].draw(ctx, image);
+                    for (let i = 0; i < firstFree; i++) particles[i].draw(ctx, image);
+                }
+            };
+        };
+
+        (function (canvas) {
+            var ctx = canvas.getContext('2d'),
+                particles = new ParticlePool(settings.particles.length),
+                particleRate = settings.particles.length / settings.particles.duration,
+                time;
+
+            function pointOnHeart(t) {
+                return new Point(
+                    160 * Math.pow(Math.sin(t), 3),
+                    130 * Math.cos(t) - 50 * Math.cos(2 * t) -
+                    20 * Math.cos(3 * t) - 10 * Math.cos(4 * t) + 25
+                );
+            }
+
+            var image = (function () {
+                var c = document.createElement('canvas'), ctx = c.getContext('2d');
+                c.width = settings.particles.size; c.height = settings.particles.size;
+                function to(t) {
+                    var p = pointOnHeart(t);
+                    p.x = settings.particles.size / 2 + p.x * settings.particles.size / 350;
+                    p.y = settings.particles.size / 2 - p.y * settings.particles.size / 350;
+                    return p;
+                }
+                ctx.beginPath();
+                var t = -Math.PI, p = to(t);
+                ctx.moveTo(p.x, p.y);
+                while (t < Math.PI) { t += 0.01; p = to(t); ctx.lineTo(p.x, p.y); }
+                ctx.closePath(); ctx.fillStyle = '#ea80b0'; ctx.fill();
+                var img = new Image(); img.src = c.toDataURL();
+                return img;
+            })();
+
+            function render() {
+                requestAnimationFrame(render);
+                var newTime = Date.now() / 1000, delta = newTime - (time || newTime);
+                time = newTime;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                var amount = particleRate * delta;
+                for (var i = 0; i < amount; i++) {
+                    var pos = pointOnHeart(Math.PI - 2 * Math.PI * Math.random());
+                    var dir = pos.clone().length(settings.particles.velocity);
+                    particles.add(canvas.width / 2 + pos.x, canvas.height / 2 - pos.y, dir.x, -dir.y);
+                }
+                particles.update(delta);
+                particles.draw(ctx, image);
+            }
+
+            function onResize() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+            window.onresize = onResize;
+            setTimeout(() => { onResize(); render(); }, 10);
+        })(document.getElementById('pinkboard'));
+    </script>
+</body>
+</html>
